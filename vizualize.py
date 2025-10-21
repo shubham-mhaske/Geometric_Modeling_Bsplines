@@ -14,13 +14,12 @@ plt.rcParams['grid.alpha'] = 0.3
 plt.rcParams['grid.linestyle'] = '--'
 
 # Professional color palette
-COLOR_CURVE = '#e74c3c'       # Red
-COLOR_POLYGON = '#7f7f7f'     # Gray
-COLOR_POINT = '#e74c3c'       # Red
-COLOR_TANGENT = '#27ae60'     # Green
-COLOR_NORMAL = '#3498db'      # Blue
-COLOR_BINORMAL = '#9b59b6'    # Purple
-
+COLOR_CURVE = '#e74c3c'
+COLOR_POLYGON = '#7f7f7f'
+COLOR_POINT = '#e74c3c'
+COLOR_TANGENT = '#27ae60'
+COLOR_NORMAL = '#3498db'
+COLOR_BINORMAL = '#9b59b6'
 
 def _get_fig_ax(ax=None, is_3d=False):
     """Create or retrieve figure and axis with proper styling."""
@@ -40,7 +39,6 @@ def _get_fig_ax(ax=None, is_3d=False):
         fig = ax.get_figure()
     return fig, ax
 
-
 def _style_axis(ax, is_3d=False):
     """Apply consistent styling to axis."""
     if is_3d:
@@ -56,7 +54,6 @@ def _style_axis(ax, is_3d=False):
     
     ax.legend(loc='best', framealpha=0.9, edgecolor='gray', fontsize=9)
     ax.tick_params(labelsize=9)
-
 
 def plot_bspline(control_points, curve_points, ax=None):
     """Plot B-spline curve with control polygon."""
@@ -76,11 +73,31 @@ def plot_bspline(control_points, curve_points, ax=None):
         ax.plot(curve_points[:,0], curve_points[:,1], 
                 '-', color=COLOR_CURVE, linewidth=2.5, label='B-Spline Curve', 
                 alpha=0.95, zorder=4)
+
+    # Set fixed aspect ratio and padded limits to stabilize animation
+    all_points = np.vstack([control_points, curve_points])
+    min_coords = all_points.min(axis=0)
+    max_coords = all_points.max(axis=0)
     
+    center = (min_coords + max_coords) / 2
+    size = max_coords - min_coords
+    max_size = max(size) if max(size) > 1e-6 else 1.0
+    
+    # Add padding to accommodate Frenet frame vectors
+    padding = max_size * 0.2
+    
+    if is_3d:
+        ax.set_xlim(center[0] - max_size/2 - padding, center[0] + max_size/2 + padding)
+        ax.set_ylim(center[1] - max_size/2 - padding, center[1] + max_size/2 + padding)
+        ax.set_zlim(center[2] - max_size/2 - padding, center[2] + max_size/2 + padding)
+    else:
+        ax.set_xlim(center[0] - max_size/2 - padding, center[0] + max_size/2 + padding)
+        ax.set_ylim(center[1] - max_size/2 - padding, center[1] + max_size/2 + padding)
+        ax.set_aspect('equal', adjustable='box')
+
     ax.set_title("B-Spline Curve", fontsize=14, fontweight='bold', pad=15)
     _style_axis(ax, is_3d)
     return fig, ax
-
 
 def plot_spline_segments(curve_points, knot_vector, degree, ax):
     """Color different spline segments by knot intervals."""
@@ -108,7 +125,6 @@ def plot_spline_segments(curve_points, knot_vector, degree, ax):
     _style_axis(ax, is_3d)
     return fig, ax
 
-
 def illustrate_de_boor_steps(steps, ax):
     """Visualize all de Boor algorithm levels on the main plot."""
     fig = ax.get_figure()
@@ -126,7 +142,6 @@ def illustrate_de_boor_steps(steps, ax):
                    markersize=7, linewidth=1.8, label=f'Level {r}', 
                    alpha=0.75, zorder=3+r)
     
-    # Highlight final point
     final_point = steps[-1][-1]
     if is_3d:
         ax.plot([final_point[0]], [final_point[1]], [final_point[2]], 
@@ -140,13 +155,11 @@ def illustrate_de_boor_steps(steps, ax):
     _style_axis(ax, is_3d)
     return fig, ax
 
-
 def illustrate_de_boor_steps_separate(steps):
     """Plot each de Boor level in separate subplots."""
     num_levels = len(steps)
     is_3d = steps[0].shape[1] == 3
     
-    # Create grid layout
     cols = min(num_levels, 3)
     rows = (num_levels + cols - 1) // cols
     fig = plt.figure(figsize=(5 * cols, 5 * rows))
@@ -181,18 +194,15 @@ def illustrate_de_boor_steps_separate(steps):
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
 
-
 def plot_frenet_frame(point, tangent, normal, binormal, ax, scale=1.5, show_magnitudes=True):
     """Plot Frenet frame with optional magnitude display."""
     fig = ax.get_figure()
     is_3d = point.shape[0] == 3
     
-    # Calculate magnitudes for display
     tangent_mag = np.linalg.norm(tangent)
     normal_mag = np.linalg.norm(normal)
     binormal_mag = np.linalg.norm(binormal) if binormal is not None else 0
     
-    # Scale vectors for display
     tangent_display = tangent * scale
     normal_display = normal * scale
     binormal_display = binormal * scale if binormal is not None else None
@@ -201,7 +211,6 @@ def plot_frenet_frame(point, tangent, normal, binormal, ax, scale=1.5, show_magn
         ax.plot([point[0]], [point[1]], [point[2]], 'o', 
                color=COLOR_POINT, markersize=12, label='Point', zorder=10)
         
-        # Create labels with magnitudes
         t_label = f'Tangent |T|={tangent_mag:.2f}' if show_magnitudes else 'Tangent'
         n_label = f'Normal |N|={normal_mag:.2f}' if show_magnitudes else 'Normal'
         b_label = f'Binormal |B|={binormal_mag:.2f}' if show_magnitudes else 'Binormal'
@@ -234,16 +243,17 @@ def plot_frenet_frame(point, tangent, normal, binormal, ax, scale=1.5, show_magn
                    arrowprops=dict(arrowstyle='->', color=COLOR_NORMAL, lw=2.5, alpha=0.9),
                    zorder=8)
         
-        # Add labels with magnitudes
-        label_t = f'T (|T|={tangent_mag:.2f})' if show_magnitudes else 'T'
-        label_n = f'N (|N|={normal_mag:.2f})' if show_magnitudes else 'N'
-        
         ax.text(point[0] + tangent_display[0]*1.15, point[1] + tangent_display[1]*1.15, 
-               label_t, color=COLOR_TANGENT, fontsize=9, fontweight='bold')
+               'T', color=COLOR_TANGENT, fontsize=9, fontweight='bold')
         ax.text(point[0] + normal_display[0]*1.15, point[1] + normal_display[1]*1.15, 
-               label_n, color=COLOR_NORMAL, fontsize=9, fontweight='bold')
+               'N', color=COLOR_NORMAL, fontsize=9, fontweight='bold')
+
+        # Create proxy artists for legend
+        label_t = f'Tangent |T|={tangent_mag:.2f}' if show_magnitudes else 'Tangent'
+        label_n = f'Normal |N|={normal_mag:.2f}' if show_magnitudes else 'Normal'
+        ax.plot([], [], color=COLOR_TANGENT, lw=2.5, label=label_t)
+        ax.plot([], [], color=COLOR_NORMAL, lw=2.5, label=label_n)
     
     ax.set_title("Frenet Frame", fontsize=14, fontweight='bold', pad=15)
     _style_axis(ax, is_3d)
     return fig, ax
-

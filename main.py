@@ -1,6 +1,5 @@
 """
 Interactive B-Spline Curve Visualizer
-
 Streamlit app for visualizing and interacting with B-spline curves.
 Supports all assignment features: 2D/3D, rational curves, closed curves,
 knot insertion, de Boor visualization, Frenet frames, and animation.
@@ -29,7 +28,6 @@ from vizualize import (
 
 st.set_page_config(layout="wide", page_title="B-Spline Visualizer", page_icon="📐")
 
-
 @dataclass
 class AdvancedAnalysisOptions:
     """Dataclass to hold advanced analysis options."""
@@ -41,7 +39,6 @@ class AdvancedAnalysisOptions:
     normalize_frenet: bool
     frenet_scale: float
     show_magnitudes: bool
-
 
 # ============================================================================
 # SESSION STATE MANAGEMENT
@@ -59,20 +56,18 @@ def set_default_session_state():
     st.session_state.knots = open_uniform_knot_vector(5, 3)
     st.session_state.animate = False
     st.session_state.knot_insert_message = None
-
+    st.session_state.knot_type = "Open Uniform"
 
 def initialize_session_state():
     """Initialize the session state if not already set."""
     if 'control_points_2d' not in st.session_state:
         set_default_session_state()
 
-
 def reset_all():
     """Reset all session state to default values."""
     set_default_session_state()
     st.success("✅ Reset to defaults")
     st.rerun()
-
 
 # ============================================================================
 # UI HELPER FUNCTIONS
@@ -81,7 +76,6 @@ def reset_all():
 def display_array(arr, name):
     """Display a formatted numpy array."""
     st.code(f"{name}:\n{np.array2string(arr, precision=3, separator=', ')}")
-
 
 # ============================================================================
 # UI COMPONENT FUNCTIONS
@@ -101,7 +95,6 @@ def display_rules_and_formulas():
             **Requirement:** `n+1 > p` (more points than degree)
             **Knot Vector:** Non-decreasing sequence `t_i ≤ t_{i+1}`
         """)
-
 
 def display_main_controls(degree, curve_dim):
     """Display main controls for curve dimension, degree, and number of points."""
@@ -127,14 +120,10 @@ def display_main_controls(degree, curve_dim):
             st.warning("⚠️ Points cleared")
             st.rerun()
 
-
 def display_point_editor(curve_dim):
     """Display the text area for editing control points."""
     control_points_key = f"control_points_{curve_dim.lower()}"
     control_points = st.session_state[control_points_key]
-
-    st.markdown("**Current Control Points:**")
-    display_array(control_points, "P")
 
     if curve_dim == "2D":
         control_str = "\n".join([f"{p[0]},{p[1]}" for p in control_points])
@@ -164,7 +153,6 @@ def display_point_editor(curve_dim):
 
     return st.session_state[control_points_key]
 
-
 def display_core_requirements():
     """Display core controls for control points and degree."""
     with st.expander("🎯 Control Points & Degree", expanded=True):
@@ -174,37 +162,52 @@ def display_core_requirements():
         control_points = display_point_editor(curve_dim)
         return control_points, curve_dim, degree
 
-
 def display_curve_properties(n, p):
     """Display knot vector and curve type controls."""
     with st.expander("⚙️ Knot Vector & Curve Type", expanded=True):
         st.subheader("Knot Vector")
-        knot_type = st.selectbox("Type", ["Open Uniform", "Uniform", "Custom"], index=0)
+        
+        knot_type_options = ["Open Uniform", "Uniform", "Custom"]
+        knot_type_index = knot_type_options.index(st.session_state.get('knot_type', "Open Uniform"))
+        knot_type = st.selectbox("Type", knot_type_options, index=knot_type_index)
+
         st.info(f"ℹ️ Need **{n + p + 2}** knot values")
 
-        if knot_type == "Open Uniform":
-            default_knots = open_uniform_knot_vector(n, p)
-        elif knot_type == "Uniform":
-            default_knots = np.arange(n + p + 2, dtype=float)
+        # ✅ Always start from session state if it exists and has correct length
+        if len(st.session_state.knots) == n + p + 2:
+            default_knots = st.session_state.knots
         else:
-            default_knots = st.session_state.knots if len(st.session_state.knots) == n + p + 2 else open_uniform_knot_vector(n, p)
+            # Generate only if length is wrong
+            if knot_type == "Open Uniform":
+                default_knots = open_uniform_knot_vector(n, p)
+            elif knot_type == "Uniform":
+                default_knots = np.arange(n + p + 2, dtype=float)
+            else:
+                default_knots = open_uniform_knot_vector(n, p)
+            st.session_state.knots = default_knots
 
-        knots_str = st.text_input("Knots (comma-separated)", ",".join(map(str, np.round(default_knots, 2))))
+        knots_str = st.text_input(
+            "Knots (comma-separated)", 
+            ",".join(map(str, np.round(default_knots, 2))),
+            key="knots_input"
+        )
 
         try:
-            knots = np.array([float(k) for k in knots_str.split(",")])
-            if len(knots) != n + p + 2:
-                st.error(f"❌ Need {n + p + 2} knots, got {len(knots)}")
+            knots_from_input = np.array([float(k) for k in knots_str.split(",")])
+            if len(knots_from_input) != n + p + 2:
+                st.error(f"❌ Need {n + p + 2} knots, got {len(knots_from_input)}")
                 st.stop()
-            if not np.all(np.diff(knots) >= -1e-10):
+            if not np.all(np.diff(knots_from_input) >= -1e-10):
                 st.error("❌ Knots must be non-decreasing")
                 st.stop()
         except ValueError:
             st.error("❌ Invalid knot format")
             st.stop()
 
-        st.session_state.knots = knots
-        display_array(knots, "U")
+        # ✅ ONLY update session state if user manually changed the knots
+        if not np.array_equal(knots_from_input, st.session_state.knots):
+            st.session_state.knots = knots_from_input
+            st.session_state.knot_type = "Custom"
 
         st.subheader("Curve Type")
         is_rational = st.checkbox("Rational (NURBS)", value=False)
@@ -217,7 +220,8 @@ def display_curve_properties(n, p):
         if is_closed:
             st.warning(f"⚠️ First {p} points will wrap to end")
 
-        return knots, is_rational, weights_str, is_closed
+        # ✅ Return session state, not local variable!
+        return st.session_state.knots, is_rational, weights_str, is_closed
 
 
 def display_advanced_analysis(t_min, t_max) -> AdvancedAnalysisOptions:
@@ -248,7 +252,6 @@ def display_advanced_analysis(t_min, t_max) -> AdvancedAnalysisOptions:
 
         return AdvancedAnalysisOptions(show_segments, show_de_boor, t_de_boor, show_frenet, t_frenet, normalize_frenet, frenet_scale, show_magnitudes)
 
-
 def display_knot_insertion(t_min, t_max, degree, control_points):
     """Display knot insertion controls."""
     with st.expander("🔧 Knot Insertion"):
@@ -258,25 +261,55 @@ def display_knot_insertion(t_min, t_max, degree, control_points):
             msg_type, msg_text = st.session_state.knot_insert_message
             getattr(st, msg_type)(msg_text)
 
-        u_insert = st.number_input("Knot value to insert", min_value=float(t_min), max_value=float(t_max), value=float(t_min + t_max) / 2)
+        # ✅ Show current state
+        st.write(f"**Current:** {len(control_points)} points, {len(st.session_state.knots)} knots")
+
+        u_insert = st.number_input("Knot value to insert", 
+                                   min_value=float(t_min), max_value=float(t_max), 
+                                   value=float(t_min + t_max) / 2)
 
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Insert Knot", use_container_width=True):
                 try:
+                    old_len_pts = len(control_points)
+                    old_len_knots = len(st.session_state.knots)
+
+                    # before inserting
+                    print("KNOT INSERT DEBUG — before insert")
+                    print("u_insert:", u_insert)
+                    print("current knots:", np.array2string(st.session_state.knots, precision=3))
+                    print("current control points shape:", control_points.shape)
+
+                    # call insertion
                     new_pts, new_knots = knot_insertion(control_points, st.session_state.knots, degree, u_insert)
+
+                    # Update session state with new curve data
                     dim_key = f"control_points_{'2d' if control_points.shape[1] == 2 else '3d'}"
                     st.session_state[dim_key] = new_pts
                     st.session_state.knots = new_knots
-                    st.session_state.knot_insert_message = ("success", f"✅ Knot inserted at u={u_insert:.3f}")
+                    st.session_state.knot_type = "Custom"
+
+                    # Format the debug info for UI display
+                    debug_output = f"""KNOT INSERT DEBUG — before insert
+u_insert: {u_insert}
+current knots: {np.array2string(control_points, precision=3)}
+current control points shape: {control_points.shape}
+
+KNOT INSERT DEBUG — after insert
+new knots: {np.array2string(new_knots, precision=3)}
+new control points shape: {new_pts.shape}
+{np.array2string(new_pts, precision=3, separator=', ')}
+"""
+
+                    st.session_state.knot_insert_message = ("code", debug_output)
                 except Exception as e:
-                    st.session_state.knot_insert_message = ("error", f"❌ Failed: {e}")
+                    st.session_state.knot_insert_message = ("error", f"❌ Failed: {e}\n{str(e.__traceback__)}")
                 st.rerun()
         with col2:
             if st.button("Clear Message", use_container_width=True):
                 st.session_state.knot_insert_message = None
                 st.rerun()
-
 
 def display_curve_summary(n, p, knots, control_points, is_rational, is_closed):
     """Display a summary of the curve's configuration."""
@@ -293,7 +326,6 @@ def display_curve_summary(n, p, knots, control_points, is_rational, is_closed):
 
     st.info(f"**Parameter range:** t ∈ [{knots[p]:.3f}, {knots[n+1]:.3f}]")
 
-
 def calculate_curve_points(t_values, degree, knots, control_points, is_rational, weights_str):
     """Calculate the points on the B-spline curve."""
     if is_rational:
@@ -308,7 +340,6 @@ def calculate_curve_points(t_values, degree, knots, control_points, is_rational,
         return np.array([rational_bspline_point(t, degree, knots, control_points, weights) for t in t_values])
     else:
         return np.array([de_boor(t, degree, knots, control_points) for t in t_values])
-
 
 def main():
     """Main function to run the Streamlit application."""
@@ -338,7 +369,6 @@ def main():
             n_draw = len(control_points_to_draw) - 1
             knots = closed_bspline_knot_vector(n_draw, degree)
             st.success(f"✅ Closed: {n+1} → {n_draw+1} points")
-            display_array(control_points_to_draw, "Wrapped Points")
         else:
             control_points_to_draw, n_draw = control_points, n
 
@@ -348,36 +378,58 @@ def main():
         if not is_closed:
             display_knot_insertion(t_min, t_max, degree, control_points)
 
-    t_values = np.linspace(t_min, t_max, 300)
-    curve_points = calculate_curve_points(t_values, degree, knots, control_points_to_draw, is_rational, weights_str)
-
     with col2:
         st.header("📈 Visualization")
-        display_curve_summary(n_draw, degree, knots, control_points_to_draw, is_rational, is_closed)
+        
+        # ✅ ALWAYS get fresh values from session state for display
+        display_control_points = st.session_state[f'control_points_{curve_dim.lower()}']
+        display_knots = st.session_state['knots']
+        
+        # If closed, wrap the points
+        if is_closed:
+            display_control_points = closed_bspline(display_control_points, degree)
+            n_display = len(display_control_points) - 1
+            display_knots = closed_bspline_knot_vector(n_display, degree)
+        else:
+            n_display = len(display_control_points) - 1
+        
+        display_curve_summary(n_display, degree, display_knots, display_control_points, is_rational, is_closed)
+        
+        # Show current state
+        st.markdown("**Current Control Points:**")
+        display_array(display_control_points, "P")
+        
+        st.markdown("**Current Knots:**")
+        display_array(display_knots, "U")
+
         st.subheader("Main Curve")
         plot_placeholder = st.empty()
 
+        # ✅ Calculate t_values and curve with fresh display values
+        t_values = np.linspace(display_knots[degree], display_knots[n_display + 1], 300)
+        curve_points = calculate_curve_points(t_values, degree, display_knots, display_control_points, is_rational, weights_str)
+
         if st.session_state.animate:
             for t_anim in np.linspace(t_min, t_max, 100):
-                fig, ax = plot_bspline(control_points_to_draw, curve_points)
-                point, tangent, normal, binormal = frenet_frame(t_anim, degree, knots, control_points_to_draw, normalize=analysis_options.normalize_frenet)
+                fig, ax = plot_bspline(display_control_points, curve_points)
+                point, tangent, normal, binormal = frenet_frame(t_anim, degree, display_knots, display_control_points, normalize=analysis_options.normalize_frenet)
                 plot_frenet_frame(point, tangent, normal, binormal, ax=ax, scale=analysis_options.frenet_scale, show_magnitudes=analysis_options.show_magnitudes)
                 plot_placeholder.pyplot(fig)
                 time.sleep(0.05)
             st.session_state.animate = False
             st.rerun()
         else:
-            fig, ax = plot_bspline(control_points_to_draw, curve_points)
+            fig, ax = plot_bspline(display_control_points, curve_points)
             if analysis_options.show_segments:
-                plot_spline_segments(curve_points, knots, degree, ax=ax)
+                plot_spline_segments(curve_points, display_knots, degree, ax=ax)
 
             de_boor_steps = None
             if analysis_options.show_de_boor:
-                _, de_boor_steps = de_boor(analysis_options.t_de_boor, degree, knots, control_points_to_draw, show_steps=True)
+                _, de_boor_steps = de_boor(analysis_options.t_de_boor, degree, display_knots, display_control_points, show_steps=True)
                 illustrate_de_boor_steps(de_boor_steps, ax=ax)
 
             if analysis_options.show_frenet:
-                point, tangent, normal, binormal = frenet_frame(analysis_options.t_frenet, degree, knots, control_points_to_draw, normalize=analysis_options.normalize_frenet)
+                point, tangent, normal, binormal = frenet_frame(analysis_options.t_frenet, degree, display_knots, display_control_points, normalize=analysis_options.normalize_frenet)
                 plot_frenet_frame(point, tangent, normal, binormal, ax=ax, scale=analysis_options.frenet_scale, show_magnitudes=analysis_options.show_magnitudes)
                 with col1:
                     st.subheader("Frenet Vectors")
@@ -404,7 +456,6 @@ def main():
                     for r, pts in enumerate(de_boor_steps):
                         st.write(f"**Level {r}:**")
                         st.code(np.array2string(pts, precision=3, separator=', '))
-
 
 if __name__ == "__main__":
     main()
